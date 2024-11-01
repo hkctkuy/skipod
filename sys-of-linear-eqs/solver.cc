@@ -164,6 +164,10 @@ gen(
     return {ia, ja};
 }
 
+inline float filler(size_t i, size_t j) {
+    return std::cos(i * j + i + j);
+}
+
 std::vector<float> fill(
     std::vector<size_t>& ia,
     std::vector<size_t>& ja
@@ -175,7 +179,7 @@ std::vector<float> fill(
         for (size_t ind = ia[i]; ind < ia[i + 1]; ind++) {
             size_t j = ja[ind];
             if (j != i) {
-                a[ind] = std::cos(i * j + i + j);
+                a[ind] = filler(i, j);
                 sum += std::abs(a[ind]);
             } else {
                 diag_ind = ind;

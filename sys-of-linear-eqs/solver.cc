@@ -1,6 +1,9 @@
+#include <cmath>
 #include <iostream>
 #include <utility>
 #include <vector>
+
+#define COEF 1.234 // Need to be great then 1
 
 // Enum to distinguish between upper triangular and lower triangular vortex
 enum TriangularType { Upper, Lower };
@@ -161,6 +164,28 @@ gen(
     return {ia, ja};
 }
 
+std::vector<float> fill(
+    std::vector<size_t>& ia,
+    std::vector<size_t>& ja
+) {
+    std::vector<float> a(ja.size());
+    for (size_t i = 0; i < ia.size() - 1; i++) {
+        size_t diag_ind;
+        float sum = 0;
+        for (size_t ind = ia[i]; ind < ia[i + 1]; ind++) {
+            size_t j = ja[ind];
+            if (j != i) {
+                a[ind] = std::cos(i * j + i + j);
+                sum += std::abs(a[ind]);
+            } else {
+                diag_ind = ind;
+            }
+        }
+        a[diag_ind] = COEF * sum;
+    }
+    return a;
+}
+
 int main(int argc, char** argv) {
     if (argc != 5) {
         // Help
@@ -176,18 +201,15 @@ int main(int argc, char** argv) {
     size_t ny = std::stoll(argv[2]);
     size_t k1 = std::stoll(argv[3]);
     size_t k2 = std::stoll(argv[4]);
+
+    // Gen ia/ja
     auto [ia, ja] = gen(nx, ny, k1, k2);
+    // Fill 
+    auto a = fill(ia, ja);
     /*
-    std::cout << "IA: ";
-    for (const auto a: ia) {
-        std::cout << a << " ";
+    for (const auto val: a) {
+        std::cout << val << ' ';
     }
-    std::cout << "\n";
-    std::cout << "JA: ";
-    for (const auto a: ja) {
-        std::cout << a << " ";
-    }
-    std::cout << "\n";
     */
     return 0;
 }

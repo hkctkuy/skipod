@@ -7,7 +7,7 @@
 #include <omp.h>
 
 #define COEF 1.234 // Need to be great then 1
-#define MAX_POSSIBLE_NEIB 4
+#define MAX_POSSIBLE_NEIB 5
 
 // Enum to distinguish between upper triangular and lower triangular vortex
 enum TriangularType { Upper, Lower };
@@ -47,7 +47,7 @@ size_t get_vertex(
  * * IA
  * * JA
  */
-std::pair<std::vector<size_t>, std::vector<size_t>> gen(
+auto gen(
     size_t nx,
     size_t ny,
     size_t k1,
@@ -86,83 +86,90 @@ std::pair<std::vector<size_t>, std::vector<size_t>> gen(
         std::cout << "JA size: " << size_ja << "\n";
     }
     std::vector<size_t> ia(size_ia);
+    ia[0] = 0;
     // Memory: 4|V|, instead |E| for ja :(
     std::vector<std::vector<size_t>> dist_ja(nv);
-    for (int i = 0; i < nv; i++) {
-        dist_ja[i] = std::vector<size_t>(MAX_POSSIBLE_NEIB);
+    #pragma omp parallel
+    {
+        #pragma omp for
+        for (auto& dist_val : dist_ja) {
+            dist_val = std::vector<size_t>(MAX_POSSIBLE_NEIB);
+        }
     }
     // Fill vecs
     // Go through vertices nums
-    size_t ja_counter = 0;
-    ia[0] = 0;
-    for (size_t iter = 0; iter < iters; iter++) {
-        // NOTE: Define and count this here by parallel issues
-        // NOTE: In start of iteration we are always on square vertex
-        size_t v = iter * (k1 + k2 * 2); // Cur vertex num
-        size_t c = iter * (k1 + k2); // Cur cell number
-        size_t i = c / ny; // Cur cell row number
-        size_t j = c % ny; // Cur cell col number
-        // Some crazy loop unrolling
-        // Square cells
-        for (int counter = 0; counter < k1 && v < nv; counter++) {
-            unsigned char rel = 0;
-            if (i > 0) { // Upper neighbor
-                size_t neighbor = get_vertex(c - ny, k1, k2, TriangularType::Lower);
-                dist_ja[v][rel++] = neighbor;
+    #pragma omp parallel
+    {
+        #pragma omp for
+        for (size_t iter = 0; iter < iters; iter++) {
+            // NOTE: Define and count this here by parallel issues
+            // NOTE: In start of iteration we are always on square vertex
+            size_t v = iter * (k1 + k2 * 2); // Cur vertex num
+            size_t c = iter * (k1 + k2); // Cur cell number
+            size_t i = c / ny; // Cur cell row number
+            size_t j = c % ny; // Cur cell col number
+            // Some crazy loop unrolling
+            // Square cells
+            for (int counter = 0; counter < k1 && v < nv; counter++) {
+                unsigned char rel = 0;
+                if (i > 0) { // Upper neighbor
+                    size_t neighbor = get_vertex(c - ny, k1, k2, TriangularType::Lower);
+                    dist_ja[v][rel++] = neighbor;
+                }
+                if (j > 0) { // Left neighbor
+                    dist_ja[v][rel++] = v - 1;
+                }
+                dist_ja[v][rel++] = v; // Self
+                if (j < ny - 1) { // Right neighbor
+                    dist_ja[v][rel++] = v + 1;
+                }
+                if (i < nx - 1) { // Lower neighbor
+                    size_t neighbor = get_vertex(c + ny, k1, k2, TriangularType::Upper);
+                    dist_ja[v][rel++] = neighbor;
+                }
+                ia[v + 1] = rel;
+                // Turn to next cell
+                j = (j + 1) % ny;
+                if (j == 0) {
+                    i++;
+                }
+                v++;
+                c++;
             }
-            if (j > 0) { // Left neighbor
-                dist_ja[v][rel++] = v - 1;
+            // Triangular cells
+            for (int counter = 0; counter < k2 && v < nv; counter++) {
+                // Lower
+                unsigned char rel = 0;
+                if (j > 0) { // Left neighbor
+                    dist_ja[v][rel++] = v - 1;
+                }
+                dist_ja[v][rel++] = v; // Self
+                dist_ja[v][rel++] = v + 1; // Pair upper triangular cell
+                if (i < nx - 1) { // Lower neighbor
+                    size_t neighbor = get_vertex(c + ny, k1, k2, TriangularType::Upper);
+                    dist_ja[v][rel++] = neighbor;
+                }
+                ia[v + 1] = rel;
+                // Upper
+                rel = 0;
+                if (i > 0) { // Upper neighbor
+                    size_t neighbor = get_vertex(c - ny, k1, k2, TriangularType::Lower);
+                    dist_ja[v + 1][rel++] = neighbor;
+                }
+                dist_ja[v + 1][rel++] = v; // Pair lower triangular cell
+                dist_ja[v + 1][rel++] = v + 1; // Self
+                if (j < ny - 1) { // Right neighbor
+                    dist_ja[v + 1][rel++] = v + 2;
+                }
+                ia[v + 2] = rel;
+                // Turn to next cell
+                j = (j + 1) % ny;
+                if (j == 0) {
+                    i++;
+                }
+                v += 2;
+                c++;
             }
-            dist_ja[v][rel++] = v; // Self
-            if (j < ny - 1) { // Right neighbor
-                dist_ja[v][rel++] = v + 1;
-            }
-            if (i < nx - 1) { // Lower neighbor
-                size_t neighbor = get_vertex(c + ny, k1, k2, TriangularType::Upper);
-                dist_ja[v][rel++] = neighbor;
-            }
-            ia[v + 1] = rel;
-            // Turn to next cell
-            j = (j + 1) % ny;
-            if (j == 0) {
-                i++;
-            }
-            v++;
-            c++;
-        }
-        // Triangular cells
-        for (int counter = 0; counter < k2 && v < nv; counter++) {
-            // Lower
-            unsigned char rel = 0;
-            if (j > 0) { // Left neighbor
-                dist_ja[v][rel++] = v - 1;
-            }
-            dist_ja[v][rel++] = v; // Self
-            dist_ja[v][rel++] = v + 1; // Pair upper triangular cell
-            if (i < nx - 1) { // Lower neighbor
-                size_t neighbor = get_vertex(c + ny, k1, k2, TriangularType::Upper);
-                dist_ja[v][rel++] = neighbor;
-            }
-            ia[v + 1] = rel;
-            // Upper
-            rel = 0;
-            if (i > 0) { // Upper neighbor
-                size_t neighbor = get_vertex(c - ny, k1, k2, TriangularType::Lower);
-                dist_ja[v + 1][rel++] = neighbor; 
-            }
-            dist_ja[v + 1][rel++] = v; // Pair lower triangular cell
-            dist_ja[v + 1][rel++] = v + 1; // Self
-            if (j < ny - 1) { // Right neighbor
-                dist_ja[v + 1][rel++] = v + 2;
-            }
-            ia[v + 2] = rel;
-            // Turn to next cell
-            j = (j + 1) % ny;
-            if (j == 0) {
-                i++;
-            }
-            v += 2;
-            c++;
         }
     }
     // Adjust ia vals
@@ -173,20 +180,24 @@ std::pair<std::vector<size_t>, std::vector<size_t>> gen(
     }
     // Concat dist_ja to ja
     std::vector<size_t> ja(size_ja);
-    for (int i = 0; i < nv; i++) {
-        auto pos = ia[i];
-        auto begin = dist_ja[i].begin();
-        auto end = begin + (ia[i + 1] - ia[i]);
-        std::copy(begin, end, ja.begin() + pos);
+    #pragma omp parallel
+    {
+        #pragma omp for
+        for (int i = 0; i < nv; i++) {
+            auto pos = ia[i];
+            auto begin = dist_ja[i].begin();
+            auto end = begin + (ia[i + 1] - ia[i]);
+            std::copy(begin, end, ja.begin() + pos);
+        }
     }
-    return {ia, ja};
+    return std::pair(std::move(ia), std::move(ja));
 }
 
 inline float filler(size_t i, size_t j) {
     return std::cos(i * j + i + j);
 }
 
-std::pair<std::vector<float>, std::vector<float>> fill(
+auto fill(
     std::vector<size_t>& ia,
     std::vector<size_t>& ja,
     size_t tn
@@ -212,7 +223,7 @@ std::pair<std::vector<float>, std::vector<float>> fill(
             b[i] = std::sin(i);
         }
     }
-    return {a, b};
+    return std::pair(std::move(a), std::move(b));
 }
 
 int main(int argc, char** argv) {
@@ -241,10 +252,8 @@ int main(int argc, char** argv) {
     if (dl >= 1) {
         std::cout << "Generate IA/JA" << std::endl;
     }
-    double start = omp_get_wtime();
+    //double start = omp_get_wtime();
     auto [ia, ja] = gen(nx, ny, k1, k2, tn, dl);
-    double end = omp_get_wtime();
-    std::cout << end - start << std::endl;
     if (dl >= 2) {
         std::cout << "IA:" << std::endl;
         for (const auto val: ia) {
@@ -262,11 +271,9 @@ int main(int argc, char** argv) {
     if (dl >= 1) {
         std::cout << "Fill A:" << std::endl;
     }
-    /*
-    double start = omp_get_wtime();
     auto [a, b] = fill(ia, ja, tn);
-    double end = omp_get_wtime();
-    std::cout << end - start << std::endl;
+    //double end = omp_get_wtime();
+    //std::cout << end - start << std::endl;
     if (dl >= 2) {
         std::cout << "A" << std::endl;
         for (const auto val: a) {
@@ -279,6 +286,5 @@ int main(int argc, char** argv) {
         }
         std::cout << std::endl;
     }
-    */
     return 0;
 }

@@ -37,16 +37,19 @@ size_t get_vertex(
  * * ny - grid width 
  * * k1 - square cells sequence length
  * * k2 - triangular cells sequence length
+ * * tn - tread number
+ * * dl - debug level
  * # Return value
  * * IA
  * * JA
  */
-std::pair<std::vector<size_t>, std::vector<size_t>>
-gen(
+std::pair<std::vector<size_t>, std::vector<size_t>> gen(
     size_t nx,
     size_t ny,
     size_t k1,
-    size_t k2
+    size_t k2,
+    size_t tn,
+    size_t dl
 ) {
     // Get ia/ja sizes
     size_t div = (nx * ny) / (k1 + k2);
@@ -68,14 +71,14 @@ gen(
     size_t size_ia = nv + 1;
     // JA size
     size_t size_ja = nv + ne2;
-    /*
-    std::cout << "Square cells number: " << ns << "\n";
-    std::cout << "Triangular cells number: " << nt << "\n";
-    std::cout << "Cells number: " << nv << "\n";
-    std::cout << "Edges number: " << ne2 << "\n";
-    std::cout << "IA size: " << size_ia << "\n";
-    std::cout << "JA size: " << size_ja << "\n";
-    */
+    if (dl >= 1) {
+        std::cout << "Square cells number: " << ns << "\n";
+        std::cout << "Triangular cells number: " << nt << "\n";
+        std::cout << "Cells number: " << nv << "\n";
+        std::cout << "Edges number: " << ne2 << "\n";
+        std::cout << "IA size: " << size_ia << "\n";
+        std::cout << "JA size: " << size_ja << "\n";
+    }
     std::vector<size_t> ia(size_ia);
     std::vector<size_t> ja(size_ja);
     // Fill vecs
@@ -91,21 +94,19 @@ gen(
         // Some crazy loop unrolling
         // Square cells
         for (int counter = 0; counter < k1 && v < nv; counter++) {
-            int rel = 1;
+            unsigned char rel = 1;
             if (i > 0) { // Upper neighbor
                 size_t neighbor = get_vertex(c - ny, k1, k2, TriangularType::Lower);
                 ja[ja_counter++] = neighbor;
                 rel++;
             }
             if (j > 0) { // Left neighbor
-                size_t neighbor = get_vertex(c - 1, k1, k2, TriangularType::Upper);
-                ja[ja_counter++] = neighbor;
+                ja[ja_counter++] = v - 1;
                 rel++;
             }
             ja[ja_counter++] = v; // Self
             if (j < ny - 1) { // Right neighbor
-                size_t neighbor = get_vertex(c + 1, k1, k2, TriangularType::Lower);
-                ja[ja_counter++] = neighbor;
+                ja[ja_counter++] = v + 1;
                 rel++;
             }
             if (i < nx - 1) { // Lower neighbor
@@ -114,24 +115,24 @@ gen(
                 rel++;
             }
             ia[ia_counter++] = ia[ia_counter - 1] + rel;
+            // Turn to next cell
             j = (j + 1) % ny;
             if (j == 0) {
-                i += 1;
+                i++;
             }
-            v += 1;
-            c += 1;
+            v++;
+            c++;
         }
         // Triangular cells
         for (int counter = 0; counter < k2 && v < nv; counter++) {
             // Lower
-            int rel = 2;
+            unsigned char rel = 2;
             if (j > 0) { // Left neighbor
-                size_t neighbor = get_vertex(c - 1, k1, k2, TriangularType::Upper);
-                ja[ja_counter++] = neighbor;
+                ja[ja_counter++] = v - 1;
                 rel++;
             }
             ja[ja_counter++] = v; // Self
-            ja[ja_counter++] = v + 1; // Upper
+            ja[ja_counter++] = v + 1; // Pair upper triangular cell
             if (i < nx - 1) { // Lower neighbor
                 size_t neighbor = get_vertex(c + ny, k1, k2, TriangularType::Upper);
                 ja[ja_counter++] = neighbor;
@@ -145,20 +146,20 @@ gen(
                 ja[ja_counter++] = neighbor;
                 rel++;
             }
-            ja[ja_counter++] = v ; // Lower
+            ja[ja_counter++] = v ; // Pair lower triangular cell
             ja[ja_counter++] = v + 1; // Self
             if (j < ny - 1) { // Right neighbor
-                size_t neighbor = get_vertex(c + 1, k1, k2, TriangularType::Lower);
-                ja[ja_counter++] = neighbor;
+                ja[ja_counter++] = v + 2;
                 rel++;
             }
             ia[ia_counter++] = ia[ia_counter - 1] + rel;
+            // Turn to next cell
             j = (j + 1) % ny;
             if (j == 0) {
-                i += 1;
+                i++;
             }
             v += 2;
-            c += 1;
+            c++;
         }
     }
     return {ia, ja};
@@ -168,11 +169,13 @@ inline float filler(size_t i, size_t j) {
     return std::cos(i * j + i + j);
 }
 
-std::vector<float> fill(
+std::pair<std::vector<float>, std::vector<float>> fill(
     std::vector<size_t>& ia,
-    std::vector<size_t>& ja
+    std::vector<size_t>& ja,
+    size_t tn
 ) {
     std::vector<float> a(ja.size());
+    std::vector<float> b(ia.size() - 1);
     for (size_t i = 0; i < ia.size() - 1; i++) {
         size_t diag_ind;
         float sum = 0;
@@ -186,34 +189,65 @@ std::vector<float> fill(
             }
         }
         a[diag_ind] = COEF * sum;
+        b[i] = std::sin(i);
     }
-    return a;
+    return {a, b};
 }
 
 int main(int argc, char** argv) {
-    if (argc != 5) {
+    if (argc != 7) {
         // Help
-        std::cout << "Usage: " << argv[0] << " Nx Ny K1 K2\n";
+        std::cout << "Usage: " << argv[0] << " Nx Ny K1 K2 Tn Dl\n";
         std::cout << "Where:\n";
         std::cout << "Nx is positive int that represents grid hieght\n";
         std::cout << "Ny is positive int that represents grid width\n";
         std::cout << "K1 is positive int that represents square cells sequence length\n";
         std::cout << "K2 is positive int that represents triangular cells sequence length\n";
+        std::cout << "Tn is tread number";
+        std::cout << "Dl is debug level, may be 0, 1 and 2\n";
         return 1;
     }
     size_t nx = std::stoll(argv[1]);
     size_t ny = std::stoll(argv[2]);
     size_t k1 = std::stoll(argv[3]);
     size_t k2 = std::stoll(argv[4]);
+    size_t tn = std::stoll(argv[5]);
+    size_t dl = std::stoll(argv[6]);
 
     // Gen ia/ja
-    auto [ia, ja] = gen(nx, ny, k1, k2);
-    // Fill 
-    auto a = fill(ia, ja);
-    /*
-    for (const auto val: a) {
-        std::cout << val << ' ';
+    if (dl >= 1) {
+        std::cout << "Generate IA/JA" << std::endl;
     }
-    */
+    auto [ia, ja] = gen(nx, ny, k1, k2, tn, dl);
+    if (dl >= 2) {
+        std::cout << "IA" << std::endl;
+        for (const auto val: ia) {
+            std::cout << val << " ";
+        }
+        std::cout << std::endl;
+        std::cout << "JA" << std::endl;
+        for (const auto val: ja) {
+            std::cout << val << " ";
+        }
+        std::cout << std::endl;
+    }
+
+    // Fill 
+    if (dl >= 1) {
+        std::cout << "Fill A" << std::endl;
+    }
+    auto [a, b] = fill(ia, ja, tn);
+    if (dl >= 2) {
+        std::cout << "A" << std::endl;
+        for (const auto val: a) {
+            std::cout << val << " ";
+        }
+        std::cout << std::endl;
+        std::cout << "b" << std::endl;
+        for (const auto val: b) {
+            std::cout << val << " ";
+        }
+        std::cout << std::endl;
+    }
     return 0;
 }

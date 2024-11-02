@@ -1,14 +1,18 @@
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <utility>
 #include <vector>
 
+#include <omp.h>
+
 #define COEF 1.234 // Need to be great then 1
+#define MAX_POSSIBLE_NEIB 4
 
 // Enum to distinguish between upper triangular and lower triangular vortex
 enum TriangularType { Upper, Lower };
 
-/* Get vertex number my cell number
+/* Get vertex number by cell number
  * # Arguments:
  * * cell - cell number
  * * k1 - square cells sequence length
@@ -58,7 +62,9 @@ std::pair<std::vector<size_t>, std::vector<size_t>> gen(
     size_t ns = k1 * div;
     // Triangular vertices number
     size_t nt = k2 * div * 2;
+    size_t iters = div;
     if (mod > 0) {
+        iters++;
         ns += k1 > mod ? mod : k1;
         mod = k1 > mod ? 0 : mod - k1;
         nt += 2 * mod;
@@ -80,41 +86,42 @@ std::pair<std::vector<size_t>, std::vector<size_t>> gen(
         std::cout << "JA size: " << size_ja << "\n";
     }
     std::vector<size_t> ia(size_ia);
-    std::vector<size_t> ja(size_ja);
+    // Memory: 4|V|, instead |E| for ja :(
+    std::vector<std::vector<size_t>> dist_ja(nv);
+    for (int i = 0; i < nv; i++) {
+        dist_ja[i] = std::vector<size_t>(MAX_POSSIBLE_NEIB);
+    }
     // Fill vecs
     // Go through vertices nums
-    size_t v = 0; // Cur vertex num
-    size_t c = 0; // Cur cell number
-    size_t i = 0; // Cur cell row number
-    size_t j = 0; // Cur cell col number
     size_t ja_counter = 0;
-    size_t ia_counter = 1;
     ia[0] = 0;
-    while (v < nv) {
+    for (size_t iter = 0; iter < iters; iter++) {
+        // NOTE: Define and count this here by parallel issues
+        // NOTE: In start of iteration we are always on square vertex
+        size_t v = iter * (k1 + k2 * 2); // Cur vertex num
+        size_t c = iter * (k1 + k2); // Cur cell number
+        size_t i = c / ny; // Cur cell row number
+        size_t j = c % ny; // Cur cell col number
         // Some crazy loop unrolling
         // Square cells
         for (int counter = 0; counter < k1 && v < nv; counter++) {
-            unsigned char rel = 1;
+            unsigned char rel = 0;
             if (i > 0) { // Upper neighbor
                 size_t neighbor = get_vertex(c - ny, k1, k2, TriangularType::Lower);
-                ja[ja_counter++] = neighbor;
-                rel++;
+                dist_ja[v][rel++] = neighbor;
             }
             if (j > 0) { // Left neighbor
-                ja[ja_counter++] = v - 1;
-                rel++;
+                dist_ja[v][rel++] = v - 1;
             }
-            ja[ja_counter++] = v; // Self
+            dist_ja[v][rel++] = v; // Self
             if (j < ny - 1) { // Right neighbor
-                ja[ja_counter++] = v + 1;
-                rel++;
+                dist_ja[v][rel++] = v + 1;
             }
             if (i < nx - 1) { // Lower neighbor
                 size_t neighbor = get_vertex(c + ny, k1, k2, TriangularType::Upper);
-                ja[ja_counter++] = neighbor;
-                rel++;
+                dist_ja[v][rel++] = neighbor;
             }
-            ia[ia_counter++] = ia[ia_counter - 1] + rel;
+            ia[v + 1] = rel;
             // Turn to next cell
             j = (j + 1) % ny;
             if (j == 0) {
@@ -126,33 +133,29 @@ std::pair<std::vector<size_t>, std::vector<size_t>> gen(
         // Triangular cells
         for (int counter = 0; counter < k2 && v < nv; counter++) {
             // Lower
-            unsigned char rel = 2;
+            unsigned char rel = 0;
             if (j > 0) { // Left neighbor
-                ja[ja_counter++] = v - 1;
-                rel++;
+                dist_ja[v][rel++] = v - 1;
             }
-            ja[ja_counter++] = v; // Self
-            ja[ja_counter++] = v + 1; // Pair upper triangular cell
+            dist_ja[v][rel++] = v; // Self
+            dist_ja[v][rel++] = v + 1; // Pair upper triangular cell
             if (i < nx - 1) { // Lower neighbor
                 size_t neighbor = get_vertex(c + ny, k1, k2, TriangularType::Upper);
-                ja[ja_counter++] = neighbor;
-                rel++;
+                dist_ja[v][rel++] = neighbor;
             }
-            ia[ia_counter++] = ia[ia_counter - 1] + rel;
+            ia[v + 1] = rel;
             // Upper
-            rel = 2;
+            rel = 0;
             if (i > 0) { // Upper neighbor
                 size_t neighbor = get_vertex(c - ny, k1, k2, TriangularType::Lower);
-                ja[ja_counter++] = neighbor;
-                rel++;
+                dist_ja[v + 1][rel++] = neighbor; 
             }
-            ja[ja_counter++] = v ; // Pair lower triangular cell
-            ja[ja_counter++] = v + 1; // Self
+            dist_ja[v + 1][rel++] = v; // Pair lower triangular cell
+            dist_ja[v + 1][rel++] = v + 1; // Self
             if (j < ny - 1) { // Right neighbor
-                ja[ja_counter++] = v + 2;
-                rel++;
+                dist_ja[v + 1][rel++] = v + 2;
             }
-            ia[ia_counter++] = ia[ia_counter - 1] + rel;
+            ia[v + 2] = rel;
             // Turn to next cell
             j = (j + 1) % ny;
             if (j == 0) {
@@ -161,6 +164,20 @@ std::pair<std::vector<size_t>, std::vector<size_t>> gen(
             v += 2;
             c++;
         }
+    }
+    // Adjust ia vals
+    int prev = 0;
+    for (int i = 1; i < size_ia; i++) {
+        ia[i] += prev;
+        prev = ia[i];
+    }
+    // Concat dist_ja to ja
+    std::vector<size_t> ja(size_ja);
+    for (int i = 0; i < nv; i++) {
+        auto pos = ia[i];
+        auto begin = dist_ja[i].begin();
+        auto end = begin + (ia[i + 1] - ia[i]);
+        std::copy(begin, end, ja.begin() + pos);
     }
     return {ia, ja};
 }
@@ -176,20 +193,24 @@ std::pair<std::vector<float>, std::vector<float>> fill(
 ) {
     std::vector<float> a(ja.size());
     std::vector<float> b(ia.size() - 1);
-    for (size_t i = 0; i < ia.size() - 1; i++) {
-        size_t diag_ind;
-        float sum = 0;
-        for (size_t ind = ia[i]; ind < ia[i + 1]; ind++) {
-            size_t j = ja[ind];
-            if (j != i) {
-                a[ind] = filler(i, j);
-                sum += std::abs(a[ind]);
-            } else {
-                diag_ind = ind;
+    #pragma omp parallel
+    {
+        #pragma omp for
+        for (size_t i = 0; i < ia.size() - 1; i++) {
+            size_t diag_ind;
+            float sum = 0;
+            for (size_t ind = ia[i]; ind < ia[i + 1]; ind++) {
+                size_t j = ja[ind];
+                if (j != i) {
+                    a[ind] = filler(i, j);
+                    sum += std::abs(a[ind]);
+                } else {
+                    diag_ind = ind;
+                }
             }
+            a[diag_ind] = COEF * sum;
+            b[i] = std::sin(i);
         }
-        a[diag_ind] = COEF * sum;
-        b[i] = std::sin(i);
     }
     return {a, b};
 }
@@ -214,29 +235,38 @@ int main(int argc, char** argv) {
     size_t tn = std::stoll(argv[5]);
     size_t dl = std::stoll(argv[6]);
 
+    omp_set_num_threads(tn);
+
     // Gen ia/ja
     if (dl >= 1) {
         std::cout << "Generate IA/JA" << std::endl;
     }
+    double start = omp_get_wtime();
     auto [ia, ja] = gen(nx, ny, k1, k2, tn, dl);
+    double end = omp_get_wtime();
+    std::cout << end - start << std::endl;
     if (dl >= 2) {
-        std::cout << "IA" << std::endl;
+        std::cout << "IA:" << std::endl;
         for (const auto val: ia) {
             std::cout << val << " ";
         }
         std::cout << std::endl;
-        std::cout << "JA" << std::endl;
+        std::cout << "JA:" << std::endl;
         for (const auto val: ja) {
             std::cout << val << " ";
         }
         std::cout << std::endl;
     }
 
-    // Fill 
+    // Fill a
     if (dl >= 1) {
-        std::cout << "Fill A" << std::endl;
+        std::cout << "Fill A:" << std::endl;
     }
+    /*
+    double start = omp_get_wtime();
     auto [a, b] = fill(ia, ja, tn);
+    double end = omp_get_wtime();
+    std::cout << end - start << std::endl;
     if (dl >= 2) {
         std::cout << "A" << std::endl;
         for (const auto val: a) {
@@ -249,5 +279,6 @@ int main(int argc, char** argv) {
         }
         std::cout << std::endl;
     }
+    */
     return 0;
 }

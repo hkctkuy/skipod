@@ -30,8 +30,8 @@ size_t get_vertex(
     size_t div = cell / (k1 + k2);
     size_t mod = cell % (k1 + k2);
     size_t vertex = cell + div * k2;
-    if (mod >= k2) { // Triangular
-        vertex += mod - k2;
+    if (mod >= k1) { // Triangular
+        vertex += mod - k1;
         if (type == Upper) {
             vertex++;
         }
@@ -100,20 +100,25 @@ auto gen(
     }
     // Fill vecs
     // Go through vertices nums
+    double start = omp_get_wtime();
     #pragma omp parallel
     {
         #pragma omp for
-        for (size_t iter = 0; iter < iters; iter++) {
+        for (size_t v = 0; v < nv; v++) {
             // NOTE: Define and count this here by parallel issues
             // NOTE: In start of iteration we are always on square vertex
-            size_t v = iter * (k1 + k2 * 2); // Cur vertex num
-            size_t c = iter * (k1 + k2); // Cur cell number
+            // Get cell number by vertex
+            size_t div = v / (k1 + k2 * 2);
+            size_t mod = v % (k1 + k2 * 2);
+            size_t c = v - div * k2;
+            if (mod >= k1) {
+                c -= (mod - k1 + 1) / 2;
+            }
             size_t i = c / ny; // Cur cell row number
             size_t j = c % ny; // Cur cell col number
-            // Some crazy loop unrolling
-            // Square cells
-            for (int counter = 0; counter < k1 && v < nv; counter++) {
-                unsigned char rel = 0;
+            unsigned char rel = 0;
+            if (mod < k1) {
+                // Square cells
                 if (i > 0) { // Upper neighbor
                     size_t neighbor = get_vertex(c - ny, k1, k2, Lower);
                     dist_ja[v][rel++] = neighbor;
@@ -129,19 +134,8 @@ auto gen(
                     size_t neighbor = get_vertex(c + ny, k1, k2, Upper);
                     dist_ja[v][rel++] = neighbor;
                 }
-                ia[v + 1] = rel;
-                // Turn to next cell
-                j = (j + 1) % ny;
-                if (j == 0) {
-                    i++;
-                }
-                v++;
-                c++;
-            }
-            // Triangular cells
-            for (int counter = 0; counter < k2 && v < nv; counter++) {
-                // Lower
-                unsigned char rel = 0;
+            } else if ((mod - k1) % 2 == 0) {
+                // Lower triangular cells
                 if (j > 0) { // Left neighbor
                     dist_ja[v][rel++] = v - 1;
                 }
@@ -151,28 +145,24 @@ auto gen(
                     size_t neighbor = get_vertex(c + ny, k1, k2, TriangularType::Upper);
                     dist_ja[v][rel++] = neighbor;
                 }
-                ia[v + 1] = rel;
-                // Upper
-                rel = 0;
+            } else {
+                // Upper triangular cells
                 if (i > 0) { // Upper neighbor
                     size_t neighbor = get_vertex(c - ny, k1, k2, TriangularType::Lower);
-                    dist_ja[v + 1][rel++] = neighbor;
+                    dist_ja[v][rel++] = neighbor;
                 }
-                dist_ja[v + 1][rel++] = v; // Pair lower triangular cell
-                dist_ja[v + 1][rel++] = v + 1; // Self
+                dist_ja[v][rel++] = v - 1; // Pair lower triangular cell
+                dist_ja[v][rel++] = v; // Self
                 if (j < ny - 1) { // Right neighbor
-                    dist_ja[v + 1][rel++] = v + 2;
+                    dist_ja[v][rel++] = v + 1;
                 }
-                ia[v + 2] = rel;
-                // Turn to next cell
-                j = (j + 1) % ny;
-                if (j == 0) {
-                    i++;
-                }
-                v += 2;
-                c++;
             }
+            ia[v + 1] = rel;
         }
+    }
+    double end = omp_get_wtime();
+    if (ll >= TimeLog) {
+        std::cout << "Iter time:\t" << end - start << std::endl;
     }
     // Adjust ia vals
     int prev = 0;

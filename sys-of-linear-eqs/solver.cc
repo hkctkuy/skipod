@@ -12,6 +12,8 @@
 // Enum to distinguish between upper triangular and lower triangular vortex
 enum TriangularType { Upper, Lower };
 
+enum LogLevel { NoLog, TimeLog, InfoLog, ArrayLog };
+
 /* Get vertex number by cell number
  * # Arguments:
  * * cell - cell number
@@ -30,7 +32,7 @@ size_t get_vertex(
     size_t vertex = cell + div * k2;
     if (mod >= k2) { // Triangular
         vertex += mod - k2;
-        vertex += type == TriangularType::Upper ? 1 : 0;
+        vertex += type == Upper ? 1 : 0;
     }
     return vertex;
 }
@@ -41,8 +43,7 @@ size_t get_vertex(
  * * ny - grid width 
  * * k1 - square cells sequence length
  * * k2 - triangular cells sequence length
- * * tn - tread number
- * * dl - debug level
+ * * ll - log level
  * # Return value
  * * IA
  * * JA
@@ -52,8 +53,7 @@ auto gen(
     size_t ny,
     size_t k1,
     size_t k2,
-    size_t tn,
-    size_t dl
+    LogLevel ll
 ) {
     // Get ia/ja sizes
     size_t div = (nx * ny) / (k1 + k2);
@@ -77,7 +77,7 @@ auto gen(
     size_t size_ia = nv + 1;
     // JA size
     size_t size_ja = nv + ne2;
-    if (dl >= 1) {
+    if (ll >= TimeLog) {
         std::cout << "Square cells number: " << ns << "\n";
         std::cout << "Triangular cells number: " << nt << "\n";
         std::cout << "Cells number: " << nv << "\n";
@@ -113,7 +113,7 @@ auto gen(
             for (int counter = 0; counter < k1 && v < nv; counter++) {
                 unsigned char rel = 0;
                 if (i > 0) { // Upper neighbor
-                    size_t neighbor = get_vertex(c - ny, k1, k2, TriangularType::Lower);
+                    size_t neighbor = get_vertex(c - ny, k1, k2, Lower);
                     dist_ja[v][rel++] = neighbor;
                 }
                 if (j > 0) { // Left neighbor
@@ -124,7 +124,7 @@ auto gen(
                     dist_ja[v][rel++] = v + 1;
                 }
                 if (i < nx - 1) { // Lower neighbor
-                    size_t neighbor = get_vertex(c + ny, k1, k2, TriangularType::Upper);
+                    size_t neighbor = get_vertex(c + ny, k1, k2, Upper);
                     dist_ja[v][rel++] = neighbor;
                 }
                 ia[v + 1] = rel;
@@ -199,8 +199,7 @@ inline float filler(size_t i, size_t j) {
 
 auto fill(
     std::vector<size_t>& ia,
-    std::vector<size_t>& ja,
-    size_t tn
+    std::vector<size_t>& ja
 ) {
     std::vector<float> a(ja.size());
     std::vector<float> b(ia.size() - 1);
@@ -236,7 +235,11 @@ int main(int argc, char** argv) {
         std::cout << "K1 is positive int that represents square cells sequence length\n";
         std::cout << "K2 is positive int that represents triangular cells sequence length\n";
         std::cout << "Tn is tread number";
-        std::cout << "Dl is debug level, may be 0, 1 and 2\n";
+        std::cout << "Ll is log level:\n";
+        std::cout << "\t<=" << NoLog << " - no logs\n";
+        std::cout << "\t>=" << TimeLog << " - show time\n";
+        std::cout << "\t>=" << InfoLog << " - show info\n"; // TODO: change description
+        std::cout << "\t>=" << ArrayLog << " - show arrays\n";
         return 1;
     }
     size_t nx = std::stoll(argv[1]);
@@ -244,17 +247,18 @@ int main(int argc, char** argv) {
     size_t k1 = std::stoll(argv[3]);
     size_t k2 = std::stoll(argv[4]);
     size_t tn = std::stoll(argv[5]);
-    size_t dl = std::stoll(argv[6]);
+    LogLevel ll = (LogLevel) std::stoi(argv[6]);
 
     omp_set_num_threads(tn);
 
     // Gen ia/ja
-    if (dl >= 1) {
+    if (ll >= InfoLog) {
         std::cout << "Generate IA/JA" << std::endl;
     }
-    //double start = omp_get_wtime();
-    auto [ia, ja] = gen(nx, ny, k1, k2, tn, dl);
-    if (dl >= 2) {
+    double start = omp_get_wtime();
+    auto [ia, ja] = gen(nx, ny, k1, k2, ll);
+    double end_gen = omp_get_wtime();
+    if (ll >= ArrayLog) {
         std::cout << "IA:" << std::endl;
         for (const auto val: ia) {
             std::cout << val << " ";
@@ -268,13 +272,18 @@ int main(int argc, char** argv) {
     }
 
     // Fill a
-    if (dl >= 1) {
+    if (ll >= InfoLog) {
         std::cout << "Fill A:" << std::endl;
     }
-    auto [a, b] = fill(ia, ja, tn);
-    //double end = omp_get_wtime();
-    //std::cout << end - start << std::endl;
-    if (dl >= 2) {
+    double start_fill = omp_get_wtime();
+    auto [a, b] = fill(ia, ja);
+    double end = omp_get_wtime();
+    if (ll >= TimeLog) {
+        std::cout << "Gen time:\t" << end_gen - start << std::endl;
+        std::cout << "Fill time:\t" << end - start_fill << std::endl;
+        std::cout << "Total time:\t" << end - start << std::endl;
+    }
+    if (ll >= ArrayLog) {
         std::cout << "A" << std::endl;
         for (const auto val: a) {
             std::cout << val << " ";

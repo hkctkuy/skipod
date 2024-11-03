@@ -9,23 +9,47 @@
 #define COEF 1.234 // Need to be great then 1
 #define MAX_POSSIBLE_NEIB 5
 
-// Enum to distinguish between upper triangular and lower triangular vortex
-enum TriangularType { Lower, Upper };
+enum VertexType { Square, Lower, Upper };
 
 enum LogLevel { NoLog, TimeLog, InfoLog, ArrayLog };
+
+/* Get cell number and vertex type by vertex number
+ * # Arguments:
+ * * vertex - vertex number
+ * * k1 - square cells sequence length
+ * * k2 - triangular cells sequence length
+ * # Return values:
+ * cell number
+ * vertex type
+ */
+inline std::pair<size_t, VertexType> get_cell_n_type(
+    size_t vertex,
+    size_t k1,
+    size_t k2
+) {
+    size_t div = vertex / (k1 + k2 * 2);
+    size_t mod = vertex % (k1 + k2 * 2);
+    size_t cell = vertex - div * k2;
+    VertexType type = Square;
+    if (mod >= k1) {
+        cell -= (mod - k1 + 1) / 2;
+        type = (mod - k1 + 1) % 2 ? Lower : Upper;
+    }
+    return {cell, type};
+}
 
 /* Get vertex number by cell number
  * # Arguments:
  * * cell - cell number
  * * k1 - square cells sequence length
  * * k2 - triangular cells sequence length
- * * type - expected triangular type
+ * * type - expected vertex type (valuable for triangular)
  */
-size_t get_vertex(
+inline size_t get_vertex(
     size_t cell,
     size_t k1,
     size_t k2,
-    TriangularType type
+    VertexType type
 ) {
     size_t div = cell / (k1 + k2);
     size_t mod = cell % (k1 + k2);
@@ -46,7 +70,7 @@ size_t get_vertex(
  * * k1 - square cells sequence length
  * * k2 - triangular cells sequence length
  * * ll - log level
- * # Return value
+ * # Return values:
  * * IA
  * * JA
  */
@@ -64,9 +88,7 @@ auto gen(
     size_t ns = k1 * div;
     // Triangular vertices number
     size_t nt = k2 * div * 2;
-    size_t iters = div;
     if (mod > 0) {
-        iters++;
         ns += k1 > mod ? mod : k1;
         mod = k1 > mod ? 0 : mod - k1;
         nt += 2 * mod;
@@ -107,57 +129,53 @@ auto gen(
         for (size_t v = 0; v < nv; v++) {
             // NOTE: Define and count this here by parallel issues
             // NOTE: In start of iteration we are always on square vertex
-            // Get cell number by vertex
-            size_t div = v / (k1 + k2 * 2);
-            size_t mod = v % (k1 + k2 * 2);
-            size_t c = v - div * k2;
-            if (mod >= k1) {
-                c -= (mod - k1 + 1) / 2;
-            }
+            // Cur cell number and vertex type
+            auto [c, t] = get_cell_n_type(v, k1, k2);
             size_t i = c / ny; // Cur cell row number
             size_t j = c % ny; // Cur cell col number
-            unsigned char rel = 0;
-            if (mod < k1) {
-                // Square cells
-                if (i > 0) { // Upper neighbor
-                    size_t neighbor = get_vertex(c - ny, k1, k2, Lower);
-                    dist_ja[v][rel++] = neighbor;
-                }
-                if (j > 0) { // Left neighbor
-                    dist_ja[v][rel++] = v - 1;
-                }
-                dist_ja[v][rel++] = v; // Self
-                if (j < ny - 1) { // Right neighbor
-                    dist_ja[v][rel++] = v + 1;
-                }
-                if (i < nx - 1) { // Lower neighbor
-                    size_t neighbor = get_vertex(c + ny, k1, k2, Upper);
-                    dist_ja[v][rel++] = neighbor;
-                }
-            } else if ((mod - k1) % 2 == 0) {
-                // Lower triangular cells
-                if (j > 0) { // Left neighbor
-                    dist_ja[v][rel++] = v - 1;
-                }
-                dist_ja[v][rel++] = v; // Self
-                dist_ja[v][rel++] = v + 1; // Pair upper triangular cell
-                if (i < nx - 1) { // Lower neighbor
-                    size_t neighbor = get_vertex(c + ny, k1, k2, TriangularType::Upper);
-                    dist_ja[v][rel++] = neighbor;
-                }
-            } else {
-                // Upper triangular cells
-                if (i > 0) { // Upper neighbor
-                    size_t neighbor = get_vertex(c - ny, k1, k2, TriangularType::Lower);
-                    dist_ja[v][rel++] = neighbor;
-                }
-                dist_ja[v][rel++] = v - 1; // Pair lower triangular cell
-                dist_ja[v][rel++] = v; // Self
-                if (j < ny - 1) { // Right neighbor
-                    dist_ja[v][rel++] = v + 1;
-                }
+            unsigned char neibs = 0; // Vertex neighbor number
+            switch (t) {
+                case Square:
+                    if (i > 0) { // Upper neighbor
+                        size_t neighbor = get_vertex(c - ny, k1, k2, Lower);
+                        dist_ja[v][neibs++] = neighbor;
+                    }
+                    if (j > 0) { // Left neighbor
+                        dist_ja[v][neibs++] = v - 1;
+                    }
+                    dist_ja[v][neibs++] = v; // Self
+                    if (j < ny - 1) { // Right neighbor
+                        dist_ja[v][neibs++] = v + 1;
+                    }
+                    if (i < nx - 1) { // Lower neighbor
+                        size_t neighbor = get_vertex(c + ny, k1, k2, Upper);
+                        dist_ja[v][neibs++] = neighbor;
+                    }
+                    break;
+                case Lower:
+                    if (j > 0) { // Left neighbor
+                        dist_ja[v][neibs++] = v - 1;
+                    }
+                    dist_ja[v][neibs++] = v; // Self
+                    dist_ja[v][neibs++] = v + 1; // Pair upper triangular cell
+                    if (i < nx - 1) { // Lower neighbor
+                        size_t neighbor = get_vertex(c + ny, k1, k2, Upper);
+                        dist_ja[v][neibs++] = neighbor;
+                    }
+                    break;
+                case Upper:
+                    if (i > 0) { // Upper neighbor
+                        size_t neighbor = get_vertex(c - ny, k1, k2, Lower);
+                        dist_ja[v][neibs++] = neighbor;
+                    }
+                    dist_ja[v][neibs++] = v - 1; // Pair lower triangular cell
+                    dist_ja[v][neibs++] = v; // Self
+                    if (j < ny - 1) { // Right neighbor
+                        dist_ja[v][neibs++] = v + 1;
+                    }
+                    break;
             }
-            ia[v + 1] = rel;
+            ia[v + 1] = neibs;
         }
     }
     double end = omp_get_wtime();

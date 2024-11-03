@@ -438,14 +438,14 @@ auto solve(
 int main(int argc, char** argv) {
     if (argc != 9) {
         // Help
-        std::cout << "Usage: " << argv[0] << " Nx Ny K1 K2 MI Ep Tn Ll\n";
+        std::cout << "Usage: " << argv[0] << " Nx Ny K1 K2 Maxit Eps Tn Ll\n";
         std::cout << "Where:\n";
         std::cout << "Nx is positive int that represents grid hieght\n";
         std::cout << "Ny is positive int that represents grid width\n";
         std::cout << "K1 is positive int that represents square cells sequence length\n";
         std::cout << "K2 is positive int that represents triangular cells sequence length\n";
-        std::cout << "MI is positive int that represents maximum iteration number\n";
-        std::cout << "Ep is positive float that represents accuracy\n";
+        std::cout << "Maxit is positive int that represents maximum iteration number\n";
+        std::cout << "Eps is positive float that represents accuracy\n";
         std::cout << "Tn is tread number";
         std::cout << "Ll is log level:\n";
         std::cout << "\t<=" << NoLog << " - no logs\n";
@@ -459,7 +459,7 @@ int main(int argc, char** argv) {
     size_t k1 = std::stoll(argv[3]);
     size_t k2 = std::stoll(argv[4]);
     size_t maxit = std::stoll(argv[5]);
-    size_t eps = std::stof(argv[6]);
+    float eps = std::stof(argv[6]);
     size_t tn = std::stoll(argv[7]);
     LogLevel ll = (LogLevel) std::stoi(argv[8]);
 
@@ -510,6 +510,7 @@ int main(int argc, char** argv) {
     if (ll >= TimeLog) {
         std::cout << "Fill time:\t" << end_fill - start_fill << std::endl;
     }
+
     // Solve
     if (ll >= InfoLog) {
         std::cout << "Solving..." << std::endl;

@@ -10,7 +10,7 @@
 #define MAX_POSSIBLE_NEIB 5
 
 // Enum to distinguish between upper triangular and lower triangular vortex
-enum TriangularType { Upper, Lower };
+enum TriangularType { Lower, Upper };
 
 enum LogLevel { NoLog, TimeLog, InfoLog, ArrayLog };
 
@@ -32,7 +32,9 @@ size_t get_vertex(
     size_t vertex = cell + div * k2;
     if (mod >= k2) { // Triangular
         vertex += mod - k2;
-        vertex += type == Upper ? 1 : 0;
+        if (type == Upper) {
+            vertex++;
+        }
     }
     return vertex;
 }
@@ -77,7 +79,7 @@ auto gen(
     size_t size_ia = nv + 1;
     // JA size
     size_t size_ja = nv + ne2;
-    if (ll >= TimeLog) {
+    if (ll >= InfoLog) {
         std::cout << "Square cells number: " << ns << "\n";
         std::cout << "Triangular cells number: " << nt << "\n";
         std::cout << "Cells number: " << nv << "\n";

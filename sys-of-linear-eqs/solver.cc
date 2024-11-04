@@ -206,6 +206,14 @@ inline float filler_ij(size_t i, size_t j) {
     return std::cos(i * j + i + j);
 }
 
+/* Fill val CSR array by given row/col arrays and right side array
+ * # Arguments:
+ * * ia - row CSR array
+ * * ja - col CSR array
+ * # Return values:
+ * * a - val CSR array
+ * * b - right side array
+ */
 auto fill(
     std::vector<size_t>& ia,
     std::vector<size_t>& ja
@@ -374,7 +382,7 @@ float L2norm(
  * * ia - A row CSR array
  * * ja - A col CSR array
  * * a - A val CSR array
- * * b - left right array
+ * * b - right side array
  * * eps - accuracy
  * * maxit = maximum iteration number
  * * ll - log level

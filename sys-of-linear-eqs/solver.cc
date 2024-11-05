@@ -73,6 +73,7 @@ inline size_t get_vertex(
  * # Return values:
  * * ia - row CSR array
  * * ja - col CSR array
+ * * t - time
  */
 auto gen(
     size_t nx,
@@ -113,6 +114,7 @@ auto gen(
     ia[0] = 0;
     // Memory: 4|V|, instead |E| for ja :(
     std::vector<std::vector<size_t>> dist_ja(nv);
+    auto start = omp_get_wtime();
     #pragma omp parallel
     {
         #pragma omp for
@@ -189,13 +191,15 @@ auto gen(
     {
         #pragma omp for
         for (int i = 0; i < nv; i++) {
-            auto pos = ia[i];
+            auto pos = ja.begin() + ia[i];
             auto begin = dist_ja[i].begin();
             auto end = begin + (ia[i + 1] - ia[i]);
-            std::copy(begin, end, ja.begin() + pos);
+            std::copy(begin, end, pos);
         }
     }
-    return std::pair(std::move(ia), std::move(ja));
+    auto end = omp_get_wtime();
+    auto t = end - start;
+    return std::tuple(std::move(ia), std::move(ja), t);
 }
 
 inline float filler_i(size_t i) {
@@ -213,6 +217,7 @@ inline float filler_ij(size_t i, size_t j) {
  * # Return values:
  * * a - val CSR array
  * * b - right side array
+ * * t - time
  */
 auto fill(
     std::vector<size_t>& ia,
@@ -220,6 +225,7 @@ auto fill(
 ) {
     std::vector<float> a(ja.size());
     std::vector<float> b(ia.size() - 1);
+    auto start = omp_get_wtime();
     #pragma omp parallel
     {
         #pragma omp for
@@ -239,7 +245,9 @@ auto fill(
             b[i] = filler_i(i);
         }
     }
-    return std::pair(std::move(a), std::move(b));
+    auto end = omp_get_wtime();
+    auto t = end - start;
+    return std::tuple(std::move(a), std::move(b), t);
 }
 
 /* Get CSR reverse diagonal matrix of given one
@@ -425,6 +433,7 @@ auto solve(
     auto [im, jm, m] = get_inverse_diag_m(ia, ja, a);
     float ro_prev = eps * eps + 1;
     size_t k = 1;
+    auto start = omp_get_wtime();
     for(; ro_prev > eps * eps && k < maxit; k++) {
         auto z_mul_time = mul_mv(z, im, jm, m, r, n); // z = M^(-1) * r
         auto [ro, ro_scal_time] = scalar(r, z, n);
@@ -451,7 +460,9 @@ auto solve(
             std::cout << "Residual L2 norm: " << norm << std::endl;
         }
     }
-    auto t = std::tuple(total_scal_time, total_add_time, total_mul_time);
+    auto end = omp_get_wtime();
+    auto time = end - start;
+    auto t = std::tuple(time, total_scal_time, total_add_time, total_mul_time);
     return std::tuple(std::move(x), k, std::move(r), t);
 }
 
@@ -489,9 +500,7 @@ int main(int argc, char** argv) {
     if (ll >= InfoLog) {
         std::cout << "Generating IA/JA..." << std::endl;
     }
-    double start_gen = omp_get_wtime();
-    auto [ia, ja] = gen(nx, ny, k1, k2, ll);
-    double end_gen = omp_get_wtime();
+    auto [ia, ja, gen_time] = gen(nx, ny, k1, k2, ll);
     if (ll >= ArrayLog) {
         std::cout << "IA:\t";
         for (const auto val: ia) {
@@ -505,16 +514,14 @@ int main(int argc, char** argv) {
         std::cout << std::endl;
     }
     if (ll >= TimeLog) {
-        std::cout << "Gen time:\t" << end_gen - start_gen << std::endl;
+        std::cout << "Gen time:\t" << gen_time << std::endl;
     }
 
     // Fill a
     if (ll >= InfoLog) {
         std::cout << "Filling A/b..." << std::endl;
     }
-    double start_fill = omp_get_wtime();
-    auto [a, b] = fill(ia, ja);
-    double end_fill = omp_get_wtime();
+    auto [a, b, fill_time] = fill(ia, ja);
     if (ll >= ArrayLog) {
         std::cout << "A:\t";
         for (const auto val: a) {
@@ -528,7 +535,7 @@ int main(int argc, char** argv) {
         std::cout << std::endl;
     }
     if (ll >= TimeLog) {
-        std::cout << "Fill time:\t" << end_fill - start_fill << std::endl;
+        std::cout << "Fill time:\t" << fill_time << std::endl;
     }
 
     // Solve
@@ -536,9 +543,7 @@ int main(int argc, char** argv) {
         std::cout << "Solving..." << std::endl;
     }
     size_t n = ia.size() - 1;
-    double start_solve = omp_get_wtime();
     auto [x, k, r, t] = solve(n, ia, ja, a, b, eps, maxit, ll);
-    double end_solve = omp_get_wtime();
     if (ll >= ArrayLog) {
         std::cout << "x:\t";
         for (const auto val: x) {
@@ -547,14 +552,14 @@ int main(int argc, char** argv) {
         std::cout << std::endl;
     }
     if (ll >= TimeLog) {
-        auto [total_scal_time, total_add_time, total_mul_time] = t;
-        std::cout << "Solve time:\t" << end_solve - start_solve << std::endl;
-        std::cout << "Scalar total time:\t" << total_scal_time << "\t";
-        std::cout << "Scalar avarage time:\t" << total_scal_time / k << "\n";
-        std::cout << "Add total time:\t\t" << total_add_time << "\t";
-        std::cout << "Add avarage time:\t" << total_add_time / k << "\n";
-        std::cout << "Mul total time:\t\t" << total_mul_time << "\t";
-        std::cout << "Mul avarage time:\t" << total_mul_time / k << "\n";
+        auto [solve_time, scal_time, add_time, mul_time] = t;
+        std::cout << "Solve time:\t" << solve_time << std::endl;
+        std::cout << "Scalar total time:\t" << scal_time << "\t\t";
+        std::cout << "Scalar avarage time:\t" << scal_time / k << "\n";
+        std::cout << "Add total time:\t\t" << add_time << "\t\t";
+        std::cout << "Add avarage time:\t" << add_time / k << "\n";
+        std::cout << "Mul total time:\t\t" << mul_time << "\t\t";
+        std::cout << "Mul avarage time:\t" << mul_time / k << "\n";
     }
     return 0;
 }

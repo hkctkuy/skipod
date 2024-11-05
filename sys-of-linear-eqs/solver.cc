@@ -285,12 +285,16 @@ auto get_inverse_diag_m(
  * * a - first vector
  * * b - second vector
  * * n - size
+ * # Return value:
+ * * scalar product value
+ * * computing time
  */
-float scalar(
+auto scalar(
     std::vector<float>& a,
     std::vector<float>& b,
     size_t n
 ) {
+    auto start = omp_get_wtime();
     float sum = 0;
     #pragma omp parallel
     {
@@ -302,7 +306,8 @@ float scalar(
         #pragma omp critical
         sum += sum_private;
     }
-    return sum;
+    auto end = omp_get_wtime();
+    return std::pair(sum, end - start);
 }
 
 /* Store sum of two vectors with equal sizes (second with coef)
@@ -314,15 +319,16 @@ float scalar(
  * * c - second vector coefficient
  * * n - size
  * # Return value:
- * a + c * b
+ * * computing time
  */
-void sum_vvc(
+auto sum_vvc(
     std::vector<float>& res,
     std::vector<float>& a,
     std::vector<float>& b,
     float c,
     size_t n
 ) {
+    auto start = omp_get_wtime();
     #pragma omp parallel
     {
         #pragma omp for
@@ -330,7 +336,8 @@ void sum_vvc(
             res[i] = a[i] + c * b[i];
         }
     }
-    return;
+    auto end = omp_get_wtime();
+    return end - start;
 }
 
 /* Store multiply square CSR matrix by vector to preallocated vector
@@ -341,8 +348,10 @@ void sum_vvc(
  * * a - val CSR array
  * * v - vector
  * * n - size
+ * # Return value:
+ * * computing time
  */
-void mul_mv(
+auto mul_mv(
     std::vector<float>& res,
     std::vector<size_t>& ia,
     std::vector<size_t>& ja,
@@ -350,6 +359,7 @@ void mul_mv(
     std::vector<float>& v,
     size_t n
 ) {
+    auto start = omp_get_wtime();
     #pragma omp parallel
     {
         #pragma omp for
@@ -361,7 +371,8 @@ void mul_mv(
             }
         }
     }
-    return;
+    auto end = omp_get_wtime();
+    return end - start;
 }
 
 /* Compute L2 norm of given vector
@@ -373,7 +384,8 @@ float L2norm(
     std::vector<float>& a,
     size_t n
 ) {
-    return std::sqrt(scalar(a, a, n));
+    auto [scal, _] = scalar(a, a, n);
+    return std::sqrt(scal);
 }
 
 /* Solve Ax=b system
@@ -389,7 +401,8 @@ float L2norm(
  * # Return values:
  * * x - solution
  * * k - iteration number
- * * res - residual
+ * * r - residual
+ * * t - operation time tuple
  */
 auto solve(
     size_t n,
@@ -401,46 +414,45 @@ auto solve(
     size_t maxit,
     LogLevel ll
 ) {
+    double total_scal_time = 0;
+    double total_add_time = 0;
+    double total_mul_time = 0;
     std::vector<float> x(n, 0);
     std::vector<float> r(b);
-    auto [im, jm, m] = get_inverse_diag_m(ia, ja, a);
     std::vector<float> z(n);
-    mul_mv(z, im, jm, m, r, n); // z = M^(-1) * r
-    float ro = scalar(r, z, n);
-    std::vector<float> p(z);
+    std::vector<float> p(n);
     std::vector<float> q(n);
-    mul_mv(q, ia, ja, a, p, n); // q = Ap
-    float alpha = ro / scalar(p, q, n);
-    sum_vvc(x, x, p, alpha, n);
-    sum_vvc(r, r, q, -alpha, n);
+    auto [im, jm, m] = get_inverse_diag_m(ia, ja, a);
+    float ro_prev = eps * eps + 1;
     size_t k = 1;
-    std::vector<float> res(n);
-    if (ll >= InfoLog) {
-        mul_mv(res, ia, ja, a, x, n);
-        sum_vvc(res, res, b, 1, n);
-        auto norm = L2norm(res, n);
-        std::cout << "Iteration: " << k << "\tResidual L2 norm: " << norm << std::endl;
-    }
-    for(; ro > eps * eps && k < maxit; k++) {
-        mul_mv(z, im, jm, m, r, n); // z = M^(-1) * r
-        auto ro_prev = ro;
-        ro = scalar(r, z, n);
-        float beta = ro / ro_prev;
-        sum_vvc(p, z, p, beta, n);
-        mul_mv(q, ia, ja, a, p, n); // q = Ap
-        alpha = ro / scalar(p, q, n);
-        sum_vvc(x, x, p, alpha, n);
-        sum_vvc(r, r, q, -alpha, n);
+    for(; ro_prev > eps * eps && k < maxit; k++) {
+        auto z_mul_time = mul_mv(z, im, jm, m, r, n); // z = M^(-1) * r
+        auto [ro, ro_scal_time] = scalar(r, z, n);
+        if (k == 1) {
+            p = z; // NOTE: not move!!!
+        } else {
+            float beta = ro / ro_prev;
+            sum_vvc(p, z, p, beta, n);
+        }
+        auto q_mul_time = mul_mv(q, ia, ja, a, p, n); // q = Ap
+        auto [scal, scal_time] = scalar(p, q, n);
+        auto alpha = ro / scal;
+        auto x_add_time = sum_vvc(x, x, p, alpha, n);
+        auto r_add_time = sum_vvc(r, r, q, -alpha, n);
+        ro_prev = ro;
+        if (ll >= TimeLog) {
+            total_scal_time += ro_scal_time + scal_time;
+            total_add_time += x_add_time + r_add_time;
+            total_mul_time += z_mul_time + z_mul_time;
+        }
         if (ll >= InfoLog) {
-            mul_mv(res, ia, ja, a, x, n);
-            sum_vvc(res, res, b, 1, n);
-            auto norm = L2norm(res, n);
-            std::cout << "Iteration: " << k << "\tResidual L2 norm: " << norm << std::endl;
+            auto norm = L2norm(r, n);
+            std::cout << "Iteration: " << k << "\t";
+            std::cout << "Residual L2 norm: " << norm << std::endl;
         }
     }
-    mul_mv(res, ia, ja, a, x, n);
-    sum_vvc(res, res, b, 1, n);
-    return std::tuple(std::move(x), k, std::move(res));
+    auto t = std::tuple(total_scal_time, total_add_time, total_mul_time);
+    return std::tuple(std::move(x), k, std::move(r), t);
 }
 
 int main(int argc, char** argv) {
@@ -525,17 +537,24 @@ int main(int argc, char** argv) {
     }
     size_t n = ia.size() - 1;
     double start_solve = omp_get_wtime();
-    auto [x, k, res] = solve(n, ia, ja, a, b, eps, maxit, ll);
+    auto [x, k, r, t] = solve(n, ia, ja, a, b, eps, maxit, ll);
     double end_solve = omp_get_wtime();
     if (ll >= ArrayLog) {
-        std::cout << "x:" << std::endl;
+        std::cout << "x:\t";
         for (const auto val: x) {
             std::cout << val << " ";
         }
         std::cout << std::endl;
     }
     if (ll >= TimeLog) {
+        auto [total_scal_time, total_add_time, total_mul_time] = t;
         std::cout << "Solve time:\t" << end_solve - start_solve << std::endl;
+        std::cout << "Scalar total time:\t" << total_scal_time << "\t";
+        std::cout << "Scalar avarage time:\t" << total_scal_time / k << "\n";
+        std::cout << "Add total time:\t\t" << total_add_time << "\t";
+        std::cout << "Add avarage time:\t" << total_add_time / k << "\n";
+        std::cout << "Mul total time:\t\t" << total_mul_time << "\t";
+        std::cout << "Mul avarage time:\t" << total_mul_time / k << "\n";
     }
     return 0;
 }

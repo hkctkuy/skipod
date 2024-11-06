@@ -1,0 +1,219 @@
+\documentclass[oneside,senior,etd]{BYUPhys}
+
+\usepackage{cmap} % Для корректной кодировки в pdf
+\usepackage[utf8]{inputenc}
+\usepackage{rotating}
+
+\usepackage[russian]{babel}
+\usepackage{amsfonts} % Пакеты для математических символов и теорем
+\usepackage{amstext}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{graphicx} % Пакеты для вставки графики
+\usepackage{subfig}
+\usepackage{color}
+\usepackage[unicode]{hyperref}
+\usepackage[nottoc]{tocbibind} % Для того, чтобы список литературы отображался в оглавлении
+\usepackage{verbatim} % Для вставок заранее подготовленного текста в режиме as-is
+\usepackage{listings}
+
+\newcommand{\sectionbreak}{\clearpage} % Раздел с новой станицы
+
+\usepackage{tikz}
+\usepackage{pgfplots}
+\usetikzlibrary{arrows,positioning}
+\usepackage{adjustbox}
+
+\usepackage{makecell}
+\usepackage{booktabs}
+\usepackage{boldline}
+
+\usepackage{xcolor}
+\usepackage{soul}
+\usepackage{url}
+\usepackage{multirow}
+\usepackage{amsmath}
+
+\usepackage{pifont}
+\usepackage{indentfirst} % Делать отступ в начале первого параграфа
+
+\usepackage{minted}
+
+\usepackage[inline]{enumitem}
+
+\renewcommand
+\listingscaption{Листинг}
+
+% Общие параметры листингов
+\lstset{
+  %frame=TB,
+  showstringspaces=false,
+  tabsize=4,
+  basicstyle=\linespread{1.0}\tt\small, % делаем листинги компактнее
+  breaklines=true,
+  texcl=true, % русские буквы в комментах
+  captionpos=b,
+  aboveskip=\baselineskip,
+  commentstyle=\tt
+}
+
+\newcommand{\todo}[1]{\textcolor{red}{#1}}
+
+% DEBUG
+% \usepackage{showframe}
+
+\Faculty{Факультет вычислительной математики и кибернетики}
+\Chair{Кафедра системного программирования}
+\Course{Параллельные высокопроизводительные вычисления}
+\Year{2024}
+  \Date{6 Ноября}
+  \City{Москва}
+  \AuthorText{Автор:}
+  \Author{Егоров Илья Георгиевич}
+  \AuthorEng{Ilya Yegorov}
+  \AcadGroup{527}
+
+  \TitleTop{Многопоточная реализация операций с сеточными данными}
+  % Раскомментируйте, если нужны еще строчки названия
+  \TitleMiddle{на неструктурированной смешанной сетке,}
+  \TitleBottom{решение СЛАУ}
+  % Uncomment if you need English title
+  % \TitleTopEng{Thesis theme, first line}
+  % \TitleMiddleEng{Thesis theme, second line}
+  % \TitleBottomEng{Thesis theme, third line}
+
+\docname{ОТЧЁТ}                                      
+
+%%%% DON'T change this. It is here because .sty does not support cyrillic cp properly %%%%
+\TitlePageText{Титульная страница}
+\University{Московский государственный университет имени М.В.Ломоносова}
+\GrText{группа}
+\ListingText{Листинг}
+\AlgorithmText{Алгоритм}
+
+% Set PDF title and author
+\hypersetup{
+  pdftitle={\PDFTitle},
+  pdfauthor={\PDFAuthor}
+}
+
+\begin{document}
+\fixmargins
+ \makepreliminarypages
+
+\oneandhalfspace
+
+\pdfbookmark[section]{\contentsname}{toc}
+\tableofcontents
+
+\section{Описание задания и программной реализации}
+\subsection{Постановка задачи}
+Работа программы состоит из 4 этапов:
+\begin{enumerate}
+  \item \textbf{Generate}~--- генерация графа/портрета по тестовой сетке;
+  \item \textbf{Fill}~--- заполнение матрицы по заданному портрету;
+  \item \textbf{Solve}~--- решение СЛАУ с полученной матрицей;
+  \item \textbf{Report}~--- проверка корректности программы и выдача измерений. 
+\end{enumerate}
+
+\subsubsection{Генерация портрета на основе тестовой сетки}
+Будем иметь дело с двухмерной неструктурированной смешанной сеткой, состоящей из
+треугольников и четырехугольников.  Решетка состоит из $N = N_x * N_y$ клеточек.
+У каждой клетки есть позиция $(x, y)$, где $i$~--- номер строки в решетке,
+$j$~--- номер столбца. Нумерация клеток в решетке построчно слева направо,
+сверху вниз. Номер клеточки в единой общей нумерации: $I = i * N_x + j$. Далее
+часть квадратных клеток делятся на треугольники следующим образом: $K_1$ и
+$K_2$~--- количество идущих подряд треугольников и четырехугольников
+соотвественно. На данном этапе нужно сгенерировать "топологию" связей ячеек:
+построить графа, и по нему сгенерировать портрет матрицы смежности, дополнив
+этот портрет главной диагональю, где вершины графа~--- элементы сетки.
+
+\textbf{Входные данные:}
+\begin{itemize}
+  \item $N_x, N_y$~--- число клеток в решетке по вертикали и горизонтали;
+  \item $K_1, K_2$~--- параметры для количества треугольных и четырехугольных
+    элементов.
+\end{itemize}
+
+\textbf{Выходные данные:}
+\begin{itemize}
+  \item $N$~--- размер матрицы (число вершин в графе);
+  \item $IA, JA$~--- портрет разреженной матрицы смежности графа, (в формате
+    CSR). 
+\end{itemize}
+
+\subsubsection{Построение СЛАУ по заданному портрету матрицы}
+
+\textbf{Входные данные:}
+\begin{itemize}
+  \item $N$~--- размер матрицы (число вершин в графе);
+  \item $IA, JA$~--- портрет разреженной матрицы смежности графа, (в формате
+    CSR). 
+\end{itemize}
+
+\textbf{Выходные данные:}
+\begin{itemize}
+  \item $A$~--- массив ненулевых коэффициентов матрицы (размера $IA[N]$);
+  \item $b$~--- вектор правой части (размера $N$).
+\end{itemize}
+
+Правила заполнения:
+\begin{itemize}
+  \item $a_{ij} = \cos(i * j + i + j), i \neq j, j \in Col(i)$
+  \item $a_{ii} = 1.234 \sum_{j, j \neq i} |a_{ij}|$
+  \item $b_i = \sin(i)$
+\end{itemize}
+
+\subsubsection{Решение СЛАУ итерационным методом}
+\textbf{Входные данные:}
+\begin{itemize}
+  \item $N$~--- размер матрицы (число вершин в графе);
+  \item $IA, JA$~--- портрет разреженной матрицы смежности графа, (в формате
+    CSR). 
+  \item $A$~--- массив ненулевых коэффициентов матрицы (размера $IA[N]$);
+  \item $b$~--- вектор правой части (размера $N$).
+  \item $eps$~--- критерий остановки ($\epsilon$), которым определяется точность
+    решения;
+  \item $maxit$~--- максимальное число итераций.
+\end{itemize}
+
+\textbf{Выходные данные:}
+\begin{itemize}
+  \item $x$~--- вектор решения (размера $N$);
+  \item $n$~--- количество выполненных итераций;
+  \item $r$~--- L2 норма невязки (невязка – это вектор $r = Ax - b$).
+\end{itemize}
+
+Будем использовать такой алгоритм предобусловленного метода CG.
+
+Для решателя понадобится несколько вычислительных функций для базовых операций:
+\begin{itemize}
+  \item Матрично-векторное произведение с разреженной матрицей (sparse
+    matrix-vector);
+  \item Скалярное произведение;
+  \item Поэлементное сложение двух векторов с умножением одного из них на
+    скаляр.
+\end{itemize}
+
+\subsubsection{Проверка корректности программы и выдача измерений}
+На этом этапе нужно проверить, что невязка системы удовлетворяет заданной
+точности, выдать значение фактической невязки, и распечатать табличку
+таймирования, в которой указано, сколько времени в секундах затрачено на:
+\begin{enumerate}
+  \item Этап генерации;
+  \item Этап заполнения;
+  \item Этап решения СЛАУ;
+  \item Каждую из трех кернел-функций, базовых алгебраических операций решателя
+    СЛАУ.
+\end{enumerate}
+
+\subsection{Программная реализация}
+\section{Исследование производительности}
+\subsection{Характеристики вычислительной системы}
+\subsection{Результаты измерений производительности}
+\subsubsection{Последовательная производительность}
+\subsubsection{Параллельное ускорение}
+\section{Анализ полученных результатов}
+
+\end{document}
+

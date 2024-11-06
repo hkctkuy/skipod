@@ -384,7 +384,7 @@
 	    \begin{center}
 	    \thispagestyle{empty}
 	    \providecommand\pdfbookmark[3][]{} \pdfbookmark[1]{\@TitlePageText}{bm:Title}
-		\includegraphics[height=4cm,keepaspectratio]{./gzlogo.png}\\[0.1cm]
+		\includegraphics[height=4cm,keepaspectratio]{images/gzlogo.png}\\[0.1cm]
 	    %\vspace*{0.375in}
 	    \@University\\
 	    \@Faculty\\

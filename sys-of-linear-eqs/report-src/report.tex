@@ -10,7 +10,7 @@
 \usepackage{amssymb}
 \usepackage{amsthm}
 \usepackage{graphicx} % Пакеты для вставки графики
-\usepackage{subfig}
+%\usepackage{subfig}
 \usepackage{color}
 \usepackage[unicode]{hyperref}
 \usepackage[nottoc]{tocbibind} % Для того, чтобы список литературы отображался в оглавлении
@@ -40,6 +40,7 @@
 \usepackage{minted}
 
 \usepackage[inline]{enumitem}
+\usepackage{subcaption}
 
 \renewcommand
 \listingscaption{Листинг}
@@ -208,12 +209,305 @@ $K_2$~--- количество идущих подряд треугольник�
 \end{enumerate}
 
 \subsection{Программная реализация}
+Программа реализована на языке C++ (с++11/c++17).
+
+На листинге~\ref{list:help} представлен интерфейс программы.
+\begin{listing}[h]
+  \caption{Интерфейс реализованной программы}
+  \label{list:help}
+\begin{minted}{bash}
+Usage: ../solver Nx Ny K1 K2 Maxit Eps Tn Ll
+Where:
+Nx is positive int that represents grid hieght
+Ny is positive int that represents grid width
+K1 is positive int that represents square cells sequence length
+K2 is positive int that represents triangular cells sequence length
+Maxit is positive int that represents maximum iteration number
+Eps is positive float that represents accuracy
+Tn is tread numberLl is log level:
+	<=0 - no logs
+	>=1 - show time
+	>=2 - show info
+	>=3 - show arrays
+\end{minted}
+\end{listing}
+
+Для хранения матриц векторов использовался стандартный std::vector, для возврата
+результата часто использовался std::pair и std::tuple (удобно для c++17 и выше).
+Основные релизованные функции:
+\begin{itemize}
+  \item gen~--- функция генерации портрета матрицы;
+  \item fill~--- функция построения СЛАУ по портрету матрицы;
+  \item solve~--- функция-решатель СЛАУ;
+  \item scalar~--- функция, вычисляющая скалярное произведение;
+  \item sum\_vvc~--- функция, вычисляющая поэлементное сложение двух векторов с
+    умножением одного из них на скаляр;
+  \item mul\_mv~--- функция, вычисляющая матрично-векторное произведение с
+    разреженной матрицей (sparse matrix-vector).
+\end{itemize}
+
+Более подробное описание функций можно найти в приложении~\ref{sec:appendix}.
+
 \section{Исследование производительности}
 \subsection{Характеристики вычислительной системы}
+\noindent
+Имя: ПВС «IBM Polus» \\
+Пиковая производительность: 55.84 TFlop/s \\
+Производительность (Linpack): 40.39 TFlop/s \\
+Вычислительных узлов: 5 \\
+На каждом узле: \\
+Процессоры IBM Power 8: 2 \\
+NVIDIA Tesla P100: 2 \\
+Число процессорных ядер: 20 \\
+Число потоков на ядро: 8 \\
+Оперативная память: 256 Гбайт (1024 Гбайт узел 5) \\
+Коммуникационная сеть: Infiniband / 100 Gb \\
+Система хранения данных: GPFS \\
+Операционная система: Linux Red Hat 7.5 
+
 \subsection{Результаты измерений производительности}
+
+Все измерения проводились со следующими параметрами:
+\begin{itemize}
+  \item $K_1 = 101$
+  \item $K_2 = 57$
+  \item $maxit = 1000$
+  \item $eps = 0.0001$
+\end{itemize}
+Параметры $K_1$ и $K_2$ были выбраны взаимнопростыми друг с другом и с
+размерностями сетки для большей хаотичности, выбор $maxit$ особо не на что не
+влияет, так как при заданной точности $eps$ алгоритм сходится достаточно быстро
+(при общем размере сетки порядка $9 * 10^9$ вершин алгоритм сходится всего за 25
+итераций).
+
+Используемые опции компиляции: -std=c++11 -O3 -fopenmp
+ 
 \subsubsection{Последовательная производительность}
+
+Линейный рост стоимости и линейный рост потребления памяти в зависимости от
+размера системы видны на рис. \ref{fig:mem} и рис. \ref{fig:time}
+соответственно.
+\begin{figure}[h]
+   \begin{minipage}{0.48\textwidth}
+     \centering
+     \includegraphics[width=\linewidth]{images/linear_mem.png}
+     \caption{Зависимость потребления памяти от размера системы}
+     \label{fig:mem}
+   \end{minipage}\hfill
+   \begin{minipage}{0.48\textwidth}
+     \centering
+     \includegraphics[width=\linewidth]{images/linear_time.png}
+     \caption{Зависимость времени работы от размера системы}
+     \label{fig:time}
+   \end{minipage}
+\end{figure}
+
+На рис. \ref{fig:flops} показана зависимость достигаемой производительности от
+размера системы для всего алгоритма решателя.
+\begin{figure}[h]
+   \centering
+   \includegraphics[width=\linewidth]{images/gflops.png}
+   \caption{Зависимость достигаемой производительности от размера системы}
+   \label{fig:flops}
+\end{figure}
+
 \subsubsection{Параллельное ускорение}
+
+На рис. \ref{fig:step} и рис. \ref{fig:func} хорошо видно наличие параллельного
+ускорения для разных этапов программы и основных функций соответственно.
+\begin{figure}[h]
+   \begin{minipage}{0.48\textwidth}
+     \centering
+     \includegraphics[width=\linewidth]{images/step_time.png}
+     \caption{Зависимость времени работы этапов программы от числа параллельных
+     процессов}
+     \label{fig:step}
+   \end{minipage}\hfill
+   \begin{minipage}{0.48\textwidth}
+     \centering
+     \includegraphics[width=\linewidth]{images/func_time.png}
+     \caption{Зависимость времени работы основных функций от числа параллельных
+     процессов}
+     \label{fig:func}
+   \end{minipage}
+\end{figure}
+
 \section{Анализ полученных результатов}
+На приведенных графиках явно видна линейная зависимость между временем работы
+этапов программы и её функций от числа параллельных процессов, т.е. достигнуто
+параллельное ускорение.
+
+\appendix
+
+\cleardoublepage \phantomsection
+\section*{Приложение}\label{sec:appendix}
+\addcontentsline{toc}{section}{Приложение}
+
+В
+листингах~\ref{list:gen}, \ref{list:fill}, \ref{list:solve}, \ref{list:scal},
+\ref{list:add} и \ref{list:mul} приведены прототипы и описания основных
+реализованных функций.
+
+\begin{listing}[h]
+  \caption{Функция генерации портрета матрицы}
+  \label{list:gen}
+\begin{minted}{C}
+/* Generate CSR portrait by grid params
+ * # Arguments:
+ * * nx - grid hieght
+ * * ny - grid width 
+ * * k1 - square cells sequence length
+ * * k2 - triangular cells sequence length
+ * * ll - log level
+ * # Return values:
+ * * ia - row CSR array
+ * * ja - col CSR array
+ * * t - time
+ */
+std::tuple<std::vector<size_t>, std::vector<size_t>, double>
+gen(
+    size_t nx,
+    size_t ny,
+    size_t k1,
+    size_t k2,
+    LogLevel ll
+);
+\end{minted}
+\end{listing}
+
+\begin{listing}[h]
+  \caption{Функция построения СЛАУ по портрету матрицы}
+  \label{list:fill}
+\begin{minted}{C}
+/* Fill val CSR array by given row/col arrays and right side array
+ * # Arguments:
+ * * ia - row CSR array
+ * * ja - col CSR array
+ * # Return values:
+ * * a - val CSR array
+ * * b - right side array
+ * * t - time
+ */
+std::tuple<std::vector<float>, std::vector<float>, double>
+fill(
+    std::vector<size_t>& ia,
+    std::vector<size_t>& ja
+);
+\end{minted}
+\end{listing}
+
+\begin{listing}[h]
+  \caption{Функция-решатель СЛАУ}
+  \label{list:solve}
+\begin{minted}{C}
+/* Solve Ax=b system
+ * # Arguments:
+ * * n - size
+ * * ia - A row CSR array
+ * * ja - A col CSR array
+ * * a - A val CSR array
+ * * b - right side array
+ * * eps - accuracy
+ * * maxit = maximum iteration number
+ * * ll - log level
+ * # Return values:
+ * * x - solution
+ * * k - iteration number
+ * * r - residual
+ * * t - operation time tuple
+ */
+std::tuple<
+  std::vector<float>,
+  size_t,
+  std::vector<float>,
+  std::tuple<double, double, double, double>
+>
+solve(
+    size_t n,
+    std::vector<size_t>& ia,
+    std::vector<size_t>& ja,
+    std::vector<float>& a,
+    std::vector<float>& b,
+    float eps,
+    size_t maxit,
+    LogLevel ll
+);
+\end{minted}
+\end{listing}
+
+\begin{listing}[h]
+  \caption{Функция, вычисляющая скалярное произведение}
+  \label{list:scal}
+\begin{minted}{C}
+/* Compute scalar product of two vectors with equal sizes
+ * # Arguments:
+ * * a - first vector
+ * * b - second vector
+ * * n - size
+ * # Return value:
+ * * scalar product value
+ * * computing time
+ */
+std::pair<float, double>
+scalar(
+    std::vector<float>& a,
+    std::vector<float>& b,
+    size_t n
+);
+\end{minted}
+\end{listing}
+
+\begin{listing}[h]
+  \caption{Функция, вычисляющая поэлементное сложение двух векторов с умножением
+  одного из них на скаляр}
+  \label{list:add}
+\begin{minted}{C}
+/* Store sum of two vectors with equal sizes (second with coef)
+ * to preallocated vector
+ * # Arguments:
+ * * res - allocated result vector
+ * * a - first vector
+ * * b - second vector
+ * * c - second vector coefficient
+ * * n - size
+ * # Return value:
+ * * computing time
+ */
+double sum_vvc(
+    std::vector<float>& res,
+    std::vector<float>& a,
+    std::vector<float>& b,
+    float c,
+    size_t n
+);
+\end{minted}
+\end{listing}
+
+\begin{listing}[h]
+  \caption{Функция, вычисляющая матрично-векторное произведение с разреженной
+  матрицей}
+  \label{list:mul}
+\begin{minted}{C}
+/* Store multiply square CSR matrix by vector to preallocated vector
+ * # Arguments:
+ * * res - allocated result vector
+ * * ia - row CSR array
+ * * ja - col CSR array
+ * * a - val CSR array
+ * * v - vector
+ * * n - size
+ * # Return value:
+ * * computing time
+ */
+double mul_mv(
+    std::vector<float>& res,
+    std::vector<size_t>& ia,
+    std::vector<size_t>& ja,
+    std::vector<float>& a,
+    std::vector<float>& v,
+    size_t n
+)
+\end{minted}
+\end{listing}
 
 \end{document}
-

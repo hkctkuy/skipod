@@ -1,0 +1,61 @@
+nx=8000 ny=8000 k1=101 k2=57 maxit=1000 eps=0.0001
+
+Thread number: 1
+Gen time:	8.0437
+Fill time:	41.0571
+Solve time:	66.6031
+Scalar total time:	10.2558		Scalar avarage time:	0.256395
+Add total time:		5.74053		Add avarage time:	0.143513
+Mul total time:		22.0601		Mul avarage time:	0.551502
+
+Thread number: 2
+Gen time:	4.56926
+Fill time:	21.818
+Solve time:	23.6084
+Scalar total time:	3.65214		Scalar avarage time:	0.125936
+Add total time:		2.01011		Add avarage time:	0.0693141
+Mul total time:		7.64488		Mul avarage time:	0.263617
+
+Thread number: 4
+Gen time:	2.47283
+Fill time:	11.07
+Solve time:	11.2878
+Scalar total time:	1.71803		Scalar avarage time:	0.0636307
+Add total time:		0.976793	Add avarage time:	0.0361775
+Mul total time:		3.71547		Mul avarage time:	0.13761
+
+Thread number: 8
+Gen time:	1.43543
+Fill time:	5.7519
+Solve time:	7.56888
+Scalar total time:	0.983382	Scalar avarage time:	0.0378224
+Add total time:		0.975389	Add avarage time:	0.0375149
+Mul total time:		3.51274		Mul avarage time:	0.135105
+
+Gen time:	1.22216
+Fill time:	2.94658
+Solve time:	4.53343
+Scalar total time:	0.498777	Scalar avarage time:	0.0191837
+Add total time:		0.576092	Add avarage time:	0.0221574
+Mul total time:		1.8563		Mul avarage time:	0.071396
+
+Thread number: 32
+Gen time:	1.17314
+Fill time:	2.13928
+Solve time:	4.21497
+Scalar total time:	0.457948	Scalar avarage time:	0.0176134
+Add total time:		0.515384	Add avarage time:	0.0198225
+Mul total time:		1.7192		Mul avarage time:	0.0661232
+
+1000000	253 MB	0.574201
+2000000	503 MB	1.69145
+3000000	751 MB	1.82295
+4000000	1000 MB	2.42671
+5000000	1248 MB	3.73934
+
+10000		3852420		0.00265486
+100000		42150480	0.0288859
+1000000		492786840	0.350449
+10000000	5633019840	4.03278
+100000000	88033963500	65.0932
+

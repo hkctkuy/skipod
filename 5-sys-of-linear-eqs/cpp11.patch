@@ -1,7 +1,7 @@
-diff --git a/sys-of-linear-eqs/Makefile b/sys-of-linear-eqs/Makefile
+diff --git a/5-sys-of-linear-eqs/Makefile b/5-sys-of-linear-eqs/Makefile
 index bedd548..53e63fb 100644
---- a/sys-of-linear-eqs/Makefile
-+++ b/sys-of-linear-eqs/Makefile
+--- a/5-sys-of-linear-eqs/Makefile
++++ b/5-sys-of-linear-eqs/Makefile
 @@ -1,6 +1,6 @@
 -CC=clang++
 -CFLAGS=-std=c++17 -O3 -I/usr/lib/gcc/x86_64-linux-gnu/11/include
@@ -12,10 +12,10 @@ index bedd548..53e63fb 100644
  SOURCES=solver.cc
  OBJECTS=$(SOURCES:.cc=.o)
  EXECUTABLE=solver
-diff --git a/sys-of-linear-eqs/solver.cc b/sys-of-linear-eqs/solver.cc
+diff --git a/5-sys-of-linear-eqs/solver.cc b/5-sys-of-linear-eqs/solver.cc
 index 2cc9b06..9be7a0c 100644
---- a/sys-of-linear-eqs/solver.cc
-+++ b/sys-of-linear-eqs/solver.cc
+--- a/5-sys-of-linear-eqs/solver.cc
++++ b/5-sys-of-linear-eqs/solver.cc
 @@ -1,8 +1,8 @@
  #include <algorithm>
  #include <cmath>
